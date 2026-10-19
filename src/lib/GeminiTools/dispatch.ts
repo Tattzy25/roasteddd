@@ -77,7 +77,7 @@ export async function dispatchToolCall(call: ToolCall): Promise<any> {
     case "get_cart":
       return callCartMcp(name, id, args);
 
-    case "create_checkout":
+    case "get_checkout":
     case "update_checkout":
       return callCheckoutMcp(name, id, args);
 

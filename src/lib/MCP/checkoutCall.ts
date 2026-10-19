@@ -45,7 +45,7 @@ export async function callCheckoutMcp(
 
 export function isCheckoutTool(name: string): boolean {
   return [
-    "create_checkout",
+    "get_checkout",
     "update_checkout",
   ].includes(name);
 }
