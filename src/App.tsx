@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Mic, MicOff, PhoneOff } from 'lucide-react';
+import { PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
@@ -8,28 +8,10 @@ import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
-import { LiveCommerce, type LiveCommerceHandle, type CommerceIntent } from '../commerce';
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
   const phoneIconRef = useRef<PhoneCallIconHandle>(null);
-  const commerceRef = useRef<LiveCommerceHandle>(null);
-
-  const handleCommerceIntent = (i: CommerceIntent) => {
-    switch (i.type) {
-      case 'add_to_cart':     return console.log('Calling tool: add_to_cart', { product: i.raw, variant: i.variantRaw, options: i.selectedOptions });
-      case 'update_qty':      return console.log('Calling tool: update_cart', { line: i.lineRaw, quantity: i.qty });
-      case 'remove_line':    return console.log('Calling tool: update_cart', { line: i.lineRaw, remove: true });
-      case 'refresh_cart':    return console.log('Calling tool: get_cart', {});
-      case 'checkout':        return console.log('Calling tool: start_checkout', { cart: i.cartRaw });
-      case 'checkout_action': return console.log('Calling tool: checkout_action', { action: i.actionRaw });
-      case 'select_product':
-      case 'open_cart':
-      case 'continue_browsing':
-      case 'close':           return;
-    }
-  };
-
   const {
     isConnected,
     isMuted,
@@ -97,12 +79,6 @@ export default function App() {
               onFlip={flipCamera}
             />
           </div>
-
-          <LiveCommerce
-            ref={commerceRef}
-            onIntent={handleCommerceIntent}
-            sessionActive={isConnected}
-          />
 
           {/* Phone button (pre-call) / Dock (in-call) */}
           <AnimatePresence mode="wait">

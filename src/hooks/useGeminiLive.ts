@@ -1,12 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
-import { callCartMcp } from "../lib/MCP/cartCall";
-import { callCatalogMcp } from "../lib/MCP/catalogCall";
-import { callFaqMcp } from "../lib/MCP/faqCall";
-import { callCheckoutMcp } from "../lib/MCP/checkoutCall";
-import { dispatchToolCall } from "../lib/GeminiTools/dispatch";
-import { AGENT_SHOP_TOOLS } from "../lib/GeminiTools";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -20,20 +14,6 @@ type LiveSystemMessageSettings = {
 };
 
 type TranscriptItem = { role: "user" | "agent"; text: string };
-
-type McpToolCallResult = {
-  result?: {
-    content?: Array<{
-      type?: string;
-      text?: string;
-      [key: string]: unknown;
-    }>;
-    structuredContent?: unknown;
-    [key: string]: unknown;
-  };
-  error?: unknown;
-  [key: string]: unknown;
-};
 
 function pcm16ToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -58,37 +38,7 @@ function base64ToPCM16(base64: string): Int16Array {
   return new Int16Array(bytes.buffer);
 }
 
-function parseMcpResponse(rawBody: string): McpToolCallResult {
-  const eventData = rawBody
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trim())
-    .filter(Boolean)
-    .join("\n");
-
-  return JSON.parse(eventData || rawBody) as McpToolCallResult;
-}
-
-function unwrapMcpResult(payload: McpToolCallResult): unknown {
-  const text = payload.result?.content?.find(
-    (content) => content.type === "text" && typeof content.text === "string",
-  )?.text;
-
-  if (!text) {
-    return payload.result?.structuredContent ?? payload;
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-export function useGeminiLive(
-  systemMessageSettings: LiveSystemMessageSettings,
-  onToolResult?: (data: unknown) => void,
-) {
+export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) {
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
@@ -533,10 +483,6 @@ export function useGeminiLive(
             responseModalities: [Modality.AUDIO],
             systemInstruction: systemMessageSettings.systemInstruction,
 
-            tools: [
-              ...AGENT_SHOP_TOOLS,
-            ] as any,
-
             speechConfig: {
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: selectedVoice },
@@ -563,45 +509,6 @@ export function useGeminiLive(
               beginSessionTracking();
             },
             onmessage: async (message: LiveServerMessage) => {
-              if (message.toolCall?.functionCalls) {
-                for (const call of message.toolCall.functionCalls) {
-                  const { name, args, id } = call;
-
-                  let toolData: unknown;
-
-                  try {
-                    toolData = await dispatchToolCall({ name, id, args });
-                  } catch (error) {
-                    toolData = {
-                      success: false,
-                      error: error instanceof Error ? error.message : "Tool failed.",
-                    };
-                  }
-
-                  const showInCommerce =
-                    name === "search_catalog" ||
-                    name === "get_product" ||
-                    name === "lookup_catalog" ||
-                    name === "search_shop_policies_and_faqs";
-
-                  if (showInCommerce) {
-                    const commerceData = unwrapMcpResult(toolData as McpToolCallResult);
-                    (window as any).LiveCommerce?.ingest(commerceData);
-                    onToolResult?.(commerceData);
-                  }
-
-                  sessionRef.current?.sendToolResponse({
-                    functionResponses: [
-                      {
-                        name,
-                        id,
-                        response: { result: toolData },
-                      },
-                    ],
-                  });
-                }
-              }
-
               if (message.serverContent?.interrupted) {
                 resetPlayback();
               }
@@ -708,7 +615,6 @@ export function useGeminiLive(
       endSessionTracking,
       enqueueOutputPCM,
       initAudio,
-      onToolResult,
       resetPlayback,
       startStreaming,
       systemMessageSettings,
