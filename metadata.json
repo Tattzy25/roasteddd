@@ -1,5 +1,5 @@
 {
-  "name": "AI Tattoo Consultant",
-  "description": "The greatest tattoo consultant in real-time. Get expert advice on your next ink, the consultant that lives in your pocket.",
+  "name": "Roasttid",
+  "description": "Unfiltered live bidirectional facetime AI video and audio roasting platform. Everything on camera is fair game, Roast the AI Character or get smoked.",
   "requestFramePermissions": ["camera", "microphone"]
 }
