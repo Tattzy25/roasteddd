@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
+import { sessionManager } from '../lib/sessionManager';
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -50,12 +51,20 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
   const [consentTranscription, setConsentTranscriptionState] = useState(false);
+  const [pressureDebt, setPressureDebt] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
 
   const isMutedRef = useRef(false);
   const isVideoEnabledRef = useRef(true);
   const cameraFacingRef = useRef<"user" | "environment">("user");
   const isSessionOpenRef = useRef(false);
   const manualDisconnectRef = useRef(false);
+
+  const isUserTalkingRef = useRef(false);
+  const isAudioPlayingRef = useRef(false);
+  const pressureDebtRef = useRef(0);
+  const isAgentTurnActiveRef = useRef(false);
+  const disconnectFnRef = useRef<() => void>(() => {});
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -81,6 +90,66 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const durationIntervalRef = useRef<number | null>(null);
   const resumptionHandleRef = useRef<string | null>(null);
   const consentTranscriptionRef = useRef(false);
+  const isLockedRef = useRef(false);
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastUserSpeechRef = useRef<number | null>(null);
+
+  const broadcastSessionState = useCallback((elapsedMs: number, debt: number, locked: boolean) => {
+    const payload = {
+      type: "ROASTTID_STATE_UPDATE",
+      isConnected: isSessionOpenRef.current,
+      sessionDurationMs: elapsedMs,
+      pressureDebt: debt,
+      pressureMax: sessionManager.getMaxPressureDebtSeconds(),
+      isLocked: locked,
+      isAudioPlaying: isAudioPlayingRef.current,
+      isUserTalking: isUserTalkingRef.current,
+    };
+
+    if (typeof window !== "undefined") {
+      (window as any).__ROASTTID_STATE__ = payload;
+      window.parent.postMessage(payload, "*");
+    }
+  }, []);
+
+  const clearInterruptionLock = useCallback(() => {
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    isLockedRef.current = false;
+    isAgentTurnActiveRef.current = false;
+    setIsLocked(false);
+  }, []);
+
+  const triggerInterruptionLock = useCallback(() => {
+    if (!sessionManager.shouldBlockAudio(true)) return;
+
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+
+    isLockedRef.current = true;
+    setIsLocked(true);
+
+    // Flush any buffered user speech on the server so the AI cannot be interrupted mid-lock
+    if (isSessionOpenRef.current && sessionRef.current) {
+      try {
+        sessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+      } catch {
+        // Ignore if socket is closing
+      }
+    }
+
+    const lockDurationMs = sessionManager.getInterruptionLockMs();
+    lockTimerRef.current = setTimeout(() => {
+      isLockedRef.current = false;
+      setIsLocked(false);
+      lockTimerRef.current = null;
+    }, lockDurationMs);
+  }, []);
 
   const setConsentTranscription = useCallback((value: boolean) => {
     consentTranscriptionRef.current = value;
@@ -105,19 +174,59 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     return elapsedMs;
   }, []);
 
+  const updatePressureCooker = useCallback(() => {
+    if (!sessionRef.current || !isSessionOpenRef.current) return pressureDebtRef.current;
+
+    const maxDebt = sessionManager.getMaxPressureDebtSeconds();
+
+    if (
+      sessionManager.isPressureCookerActive(
+        isLockedRef.current,
+        isAudioPlayingRef.current,
+      )
+    ) {
+      const next = isUserTalkingRef.current
+        ? Math.max(0, pressureDebtRef.current - 1)
+        : pressureDebtRef.current + 1;
+
+      pressureDebtRef.current = next;
+      setPressureDebt(next);
+
+      if (next >= maxDebt) {
+        // DEBT UNPAYABLE: Game Over
+        window.parent.postMessage("ROASTTID_PRESSURE_COOKER_SMOKED", "*");
+        setTimeout(() => disconnectFnRef.current(), 0);
+      }
+    }
+
+    return pressureDebtRef.current;
+  }, []);
+
   const beginSessionTracking = useCallback(() => {
     connectedAtRef.current = Date.now();
+    pressureDebtRef.current = 0;
     setSessionDurationMs(0);
+    setPressureDebt(0);
+    window.parent.postMessage("ROASTTID_CALL_CONNECTED", "*");
+    broadcastSessionState(0, 0, isLockedRef.current);
+
     durationIntervalRef.current = window.setInterval(() => {
-      syncSessionDuration();
+      const elapsedMs = syncSessionDuration();
+      const currentDebt = updatePressureCooker();
+      broadcastSessionState(elapsedMs, currentDebt, isLockedRef.current);
     }, 1000);
-  }, [syncSessionDuration]);
+  }, [syncSessionDuration, updatePressureCooker, broadcastSessionState]);
 
   const endSessionTracking = useCallback(() => {
     stopDurationTimer();
-    syncSessionDuration();
+    const finalElapsedMs = syncSessionDuration();
     connectedAtRef.current = null;
-  }, [stopDurationTimer, syncSessionDuration]);
+    clearInterruptionLock();
+    pressureDebtRef.current = 0;
+    setPressureDebt(0);
+    window.parent.postMessage("ROASTTID_CALL_ENDED", "*");
+    broadcastSessionState(finalElapsedMs, 0, false);
+  }, [stopDurationTimer, syncSessionDuration, clearInterruptionLock, broadcastSessionState]);
 
   const stopVideoCapture = useCallback(() => {
     if (videoIntervalRef.current) {
@@ -133,6 +242,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     }
 
     stopVideoCapture();
+    clearInterruptionLock();
 
     if (inputNodeRef.current) {
       inputNodeRef.current.port.onmessage = null;
@@ -165,14 +275,16 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       streamRef.current = null;
     }
 
+    isUserTalkingRef.current = false;
     setMicVolume(0);
     setIsUserTalking(false);
-  }, [stopVideoCapture]);
+  }, [stopVideoCapture, clearInterruptionLock]);
 
   const resetPlayback = useCallback(() => {
     pendingOutputRef.current = [];
     pendingOutputSamplesRef.current = 0;
     playbackPrimedRef.current = false;
+    isAudioPlayingRef.current = false;
     setIsAudioPlaying(false);
     outputNodeRef.current?.port.postMessage({ type: "flush" });
   }, []);
@@ -185,6 +297,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       if (pendingOutputSamplesRef.current < OUTPUT_PREBUFFER_SAMPLES) return;
 
       playbackPrimedRef.current = true;
+      isAudioPlayingRef.current = true;
       setIsAudioPlaying(true);
 
       while (pendingOutputRef.current.length) {
@@ -199,6 +312,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       return;
     }
 
+    isAudioPlayingRef.current = true;
     setIsAudioPlaying(true);
 
     const chunk = pendingOutputRef.current.shift();
@@ -292,6 +406,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
       outputNodeRef.current.port.onmessage = (event: MessageEvent) => {
         if (event.data?.type === "underrun") {
+          isAudioPlayingRef.current = false;
           setIsAudioPlaying(false);
         }
       };
@@ -352,9 +467,14 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       });
 
       setIsUserTalking((previous) => {
-        if (previous && volume < 0.1) return false;
-        if (!previous && volume >= 0.15) return true;
-        return previous;
+        let next = previous;
+        if (previous && volume < 0.1) next = false;
+        if (!previous && volume >= 0.15) next = true;
+        isUserTalkingRef.current = next;
+        if (next) {
+          lastUserSpeechRef.current = Date.now();
+        }
+        return next;
       });
 
       rafIdRef.current = requestAnimationFrame(updateVolume);
@@ -385,6 +505,10 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
     inputNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       if (isMutedRef.current || !sessionRef.current || !isSessionOpenRef.current) {
+        return;
+      }
+
+      if (sessionManager.shouldBlockAudio(isLockedRef.current)) {
         return;
       }
 
@@ -456,6 +580,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     setSessionDurationMs(0);
   }, [cleanupMedia, endSessionTracking, resetPlayback]);
 
+  disconnectFnRef.current = disconnect;
+
   const startConnection = useCallback(
     async (selectedVoice: string) => {
       try {
@@ -509,7 +635,10 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               beginSessionTracking();
             },
             onmessage: async (message: LiveServerMessage) => {
-              if (message.serverContent?.interrupted) {
+              if (
+                message.serverContent?.interrupted &&
+                !sessionManager.shouldBlockAudio(isLockedRef.current)
+              ) {
                 resetPlayback();
               }
 
@@ -540,6 +669,11 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
               for (const part of parts) {
                 if (part.inlineData?.data) {
+                  // Lock the user's mic for 7 seconds at the start of each new AI roast turn
+                  if (!isAgentTurnActiveRef.current) {
+                    isAgentTurnActiveRef.current = true;
+                    triggerInterruptionLock();
+                  }
                   enqueueOutputPCM(base64ToPCM16(part.inlineData.data));
                 }
 
@@ -550,9 +684,11 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
                   ]);
                 }
               }
-            },
 
-          
+              if (message.serverContent?.turnComplete) {
+                isAgentTurnActiveRef.current = false;
+              }
+            },
             onclose: () => {
               isSessionOpenRef.current = false;
               resumptionHandleRef.current = null;
@@ -618,6 +754,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       resetPlayback,
       startStreaming,
       systemMessageSettings,
+      triggerInterruptionLock,
     ],
   );
 
@@ -668,6 +805,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     transcript,
     status,
     sessionDurationMs,
+    pressureDebt,
+    isLocked,
     videoRef,
     canvasRef,
     startConnection,
