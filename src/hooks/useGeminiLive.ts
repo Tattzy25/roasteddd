@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
 import { sessionManager } from '../lib/sessionManager';
@@ -15,6 +15,60 @@ type LiveSystemMessageSettings = {
 };
 
 type TranscriptItem = { role: "user" | "agent"; text: string };
+type RoastSessionConfig = {
+  session_seconds?: unknown;
+  session_persona?: unknown;
+  sessions_bonus?: unknown;
+  sessions_persons?: unknown;
+  roast_id?: unknown;
+};
+
+declare global {
+  interface Window {
+    ROAST_SESSION?: RoastSessionConfig;
+    __ROASTTID_SESSION_CONFIG__?: RoastSessionConfig;
+  }
+}
+
+function parseSessionLimitMs(config: RoastSessionConfig | null | undefined): number | null {
+  const value = config?.session_seconds;
+
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value * 1000;
+  }
+
+  if (typeof value !== "string") return null;
+
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(milliseconds?|ms|seconds?|secs?|s|minutes?|mins?|m)?$/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const unit = match[2]?.toLowerCase();
+  if (unit === "millisecond" || unit === "milliseconds" || unit === "ms") return amount;
+  if (unit === "minute" || unit === "minutes" || unit === "min" || unit === "mins" || unit === "m") {
+    return amount * 60_000;
+  }
+
+  return amount * 1000;
+}
+
+function getRoastSessionConfig(data: unknown): RoastSessionConfig | null {
+  if (!data || typeof data !== "object") return null;
+
+  const record = data as Record<string, unknown>;
+  if ("session_seconds" in record) return record as RoastSessionConfig;
+
+  if (record.type === "ROASTTID_SESSION_CONFIG") {
+    const payload = record.payload ?? record.config ?? record.session;
+    if (payload && typeof payload === "object" && "session_seconds" in payload) {
+      return payload as RoastSessionConfig;
+    }
+  }
+
+  return null;
+}
 
 function pcm16ToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -50,6 +104,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [status, setStatus] = useState<"idle" | "connecting" | "live" | "error">("idle");
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
+  const [sessionLimitMs, setSessionLimitMs] = useState<number | null>(null);
   const [consentTranscription, setConsentTranscriptionState] = useState(false);
   const [pressureDebt, setPressureDebt] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
@@ -88,6 +143,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const playbackPrimedRef = useRef(false);
   const connectedAtRef = useRef<number | null>(null);
   const durationIntervalRef = useRef<number | null>(null);
+  const sessionLimitMsRef = useRef<number | null>(null);
+  const sessionLimitReachedRef = useRef(false);
   const resumptionHandleRef = useRef<string | null>(null);
   const consentTranscriptionRef = useRef(false);
   const isLockedRef = useRef(false);
@@ -100,6 +157,10 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       type: "ROASTTID_STATE_UPDATE",
       isConnected: isSessionOpenRef.current,
       sessionDurationMs: elapsedMs,
+      sessionLimitMs: sessionLimitMsRef.current,
+      sessionRemainingMs: sessionLimitMsRef.current === null
+        ? null
+        : Math.max(0, sessionLimitMsRef.current - elapsedMs),
       pressureDebt: debt,
       pressureMax: sessionManager.getMaxPressureDebtSeconds(),
       isLocked: locked,
@@ -112,6 +173,31 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
       window.parent.postMessage(payload, "*");
     }
   }, []);
+
+  const applyRoastSessionConfig = useCallback((config: RoastSessionConfig) => {
+    const limitMs = parseSessionLimitMs(config);
+
+    window.__ROASTTID_SESSION_CONFIG__ = config;
+    sessionLimitMsRef.current = limitMs;
+    sessionLimitReachedRef.current = false;
+    setSessionLimitMs(limitMs);
+  }, []);
+
+  useEffect(() => {
+    if (window.ROAST_SESSION) {
+      applyRoastSessionConfig(window.ROAST_SESSION);
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      const config = getRoastSessionConfig(event.data);
+      if (config) applyRoastSessionConfig(config);
+    };
+
+    window.addEventListener("message", handleMessage);
+    window.parent.postMessage({ type: "ROASTTID_SESSION_CONFIG_REQUEST" }, "*");
+
+    return () => window.removeEventListener("message", handleMessage);
+  }, [applyRoastSessionConfig]);
 
   const clearInterruptionLock = useCallback(() => {
     if (lockTimerRef.current) {
@@ -202,9 +288,21 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     return pressureDebtRef.current;
   }, []);
 
+  const endSessionIfTimeExpired = useCallback((elapsedMs: number) => {
+    const limitMs = sessionLimitMsRef.current;
+    if (limitMs === null || elapsedMs < limitMs || sessionLimitReachedRef.current) {
+      return false;
+    }
+
+    sessionLimitReachedRef.current = true;
+    setTimeout(() => disconnectFnRef.current(), 0);
+    return true;
+  }, []);
+
   const beginSessionTracking = useCallback(() => {
     connectedAtRef.current = Date.now();
     pressureDebtRef.current = 0;
+    sessionLimitReachedRef.current = false;
     setSessionDurationMs(0);
     setPressureDebt(0);
     window.parent.postMessage("ROASTTID_CALL_CONNECTED", "*");
@@ -212,10 +310,12 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
     durationIntervalRef.current = window.setInterval(() => {
       const elapsedMs = syncSessionDuration();
+      if (endSessionIfTimeExpired(elapsedMs)) return;
+
       const currentDebt = updatePressureCooker();
       broadcastSessionState(elapsedMs, currentDebt, isLockedRef.current);
     }, 1000);
-  }, [syncSessionDuration, updatePressureCooker, broadcastSessionState]);
+  }, [syncSessionDuration, endSessionIfTimeExpired, updatePressureCooker, broadcastSessionState]);
 
   const endSessionTracking = useCallback(() => {
     stopDurationTimer();
@@ -805,6 +905,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     transcript,
     status,
     sessionDurationMs,
+    sessionLimitMs,
     pressureDebt,
     isLocked,
     videoRef,
