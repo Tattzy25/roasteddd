@@ -8,6 +8,7 @@ import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
 import { WreckShader } from './components/WreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
+import { selectedVoice } from './lib/voices';
 
 export default function App() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -89,7 +90,7 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 type="button"
-                onClick={() => startConnection("Aoede")}
+                onClick={() => startConnection(selectedVoice)}
                 disabled={status === "connecting"}
                 aria-label="Start call"
                 className={cn(

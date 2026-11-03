@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
+import { sessionSeconds } from "../lib/sessionData";
 import { sessionManager } from '../lib/sessionManager';
 
 const INPUT_RATE = 16000;
@@ -15,60 +16,6 @@ type LiveSystemMessageSettings = {
 };
 
 type TranscriptItem = { role: "user" | "agent"; text: string };
-type RoastSessionConfig = {
-  session_seconds?: unknown;
-  session_persona?: unknown;
-  sessions_bonus?: unknown;
-  sessions_persons?: unknown;
-  roast_id?: unknown;
-};
-
-declare global {
-  interface Window {
-    ROAST_SESSION?: RoastSessionConfig;
-    __ROASTTID_SESSION_CONFIG__?: RoastSessionConfig;
-  }
-}
-
-function parseSessionLimitMs(config: RoastSessionConfig | null | undefined): number | null {
-  const value = config?.session_seconds;
-
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value * 1000;
-  }
-
-  if (typeof value !== "string") return null;
-
-  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(milliseconds?|ms|seconds?|secs?|s|minutes?|mins?|m)?$/i);
-  if (!match) return null;
-
-  const amount = Number(match[1]);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-
-  const unit = match[2]?.toLowerCase();
-  if (unit === "millisecond" || unit === "milliseconds" || unit === "ms") return amount;
-  if (unit === "minute" || unit === "minutes" || unit === "min" || unit === "mins" || unit === "m") {
-    return amount * 60_000;
-  }
-
-  return amount * 1000;
-}
-
-function getRoastSessionConfig(data: unknown): RoastSessionConfig | null {
-  if (!data || typeof data !== "object") return null;
-
-  const record = data as Record<string, unknown>;
-  if ("session_seconds" in record) return record as RoastSessionConfig;
-
-  if (record.type === "ROASTTID_SESSION_CONFIG") {
-    const payload = record.payload ?? record.config ?? record.session;
-    if (payload && typeof payload === "object" && "session_seconds" in payload) {
-      return payload as RoastSessionConfig;
-    }
-  }
-
-  return null;
-}
 
 function pcm16ToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
@@ -174,30 +121,13 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     }
   }, []);
 
-  const applyRoastSessionConfig = useCallback((config: RoastSessionConfig) => {
-    const limitMs = parseSessionLimitMs(config);
+  useEffect(() => {
+    const limitMs = sessionSeconds * 1000;
 
-    window.__ROASTTID_SESSION_CONFIG__ = config;
     sessionLimitMsRef.current = limitMs;
     sessionLimitReachedRef.current = false;
     setSessionLimitMs(limitMs);
   }, []);
-
-  useEffect(() => {
-    if (window.ROAST_SESSION) {
-      applyRoastSessionConfig(window.ROAST_SESSION);
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      const config = getRoastSessionConfig(event.data);
-      if (config) applyRoastSessionConfig(config);
-    };
-
-    window.addEventListener("message", handleMessage);
-    window.parent.postMessage({ type: "ROASTTID_SESSION_CONFIG_REQUEST" }, "*");
-
-    return () => window.removeEventListener("message", handleMessage);
-  }, [applyRoastSessionConfig]);
 
   const clearInterruptionLock = useCallback(() => {
     if (lockTimerRef.current) {

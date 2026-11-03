@@ -2,7 +2,7 @@ export const SessionConfig = {
   interruptionLockMs: 7000,      // Your 7-second rule
   pressureCookerMs: 120000,      // Your 2-minute rule
   enableInterruptionLock: true,  // Toggle for your dashboard
-  enablePressureCooker: true,    // Toggle for your dashboard
+  enablePressureCooker: false,    // Toggle for your dashboard
 };
 
 export const sessionManager = {
