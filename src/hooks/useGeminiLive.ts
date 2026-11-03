@@ -122,11 +122,16 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   }, []);
 
   useEffect(() => {
-    const limitMs = sessionSeconds * 1000;
+    const syncLimit = () => {
+      const limitMs = sessionSeconds > 0 ? sessionSeconds * 1000 : null;
+      sessionLimitMsRef.current = limitMs;
+      sessionLimitReachedRef.current = false;
+      setSessionLimitMs(limitMs);
+    };
 
-    sessionLimitMsRef.current = limitMs;
-    sessionLimitReachedRef.current = false;
-    setSessionLimitMs(limitMs);
+    syncLimit();
+    window.addEventListener("message", syncLimit);
+    return () => window.removeEventListener("message", syncLimit);
   }, []);
 
   const clearInterruptionLock = useCallback(() => {

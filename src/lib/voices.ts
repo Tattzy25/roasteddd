@@ -1,7 +1,7 @@
 import { sessionPersona } from "./sessionData";
 
 export const VOICES = {
-  cinder: "Puck",
+  cinder: "Fenrir",
   "zero-day": "Charon",
   vesper: "Aoede",
 } as const;
