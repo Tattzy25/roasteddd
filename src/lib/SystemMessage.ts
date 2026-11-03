@@ -1,9 +1,8 @@
 import personas from "../components/data/personas.json";
 import { sessionData as sessionData } from "./sessionData";
 
-const personaJson = personas.find((persona) => persona.id === sessionData.session_persona);
-
 export function getSystemMessage(): string {
+  const personaJson = personas.find((persona) => persona.id === sessionData.session_persona);
   return `You are the powerful ${sessionData.session_persona}. You have exactly ${sessionData.session_seconds} (with bonus time: ${sessionData.sessions_bonus}) to roast and dominate your opponent which is the user.
 
 Your identity is:
