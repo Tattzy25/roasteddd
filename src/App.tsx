@@ -86,13 +86,14 @@ export default function App() {
             {!isConnected ? (
               <motion.button
                 key="disconnected-screen"
+                id="btn-start-call"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 type="button"
                 onClick={() => startConnection(selectedVoice)}
                 disabled={status === "connecting"}
-                aria-label="Start call"
+                aria-label="start_call"
                 className={cn(
                   "absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-20 pointer-events-auto",
                   "flex items-center justify-center w-60 max-w-[calc(100vw-32px)] h-11 rounded-full",
@@ -110,12 +111,13 @@ export default function App() {
             ) : (
               <motion.button
                 key="connected-screen"
+                id="btn-end-call"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 type="button"
                 onClick={disconnect}
-                aria-label="End call"
+                aria-label="end_call"
                 className={cn(
                   "absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-20 pointer-events-auto",
                   "flex items-center justify-center w-60 max-w-[calc(100vw-32px)] h-11 rounded-full",

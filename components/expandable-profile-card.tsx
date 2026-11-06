@@ -56,6 +56,8 @@ export default function ExpandableProfileCard({
               className="relative w-full max-w-4xl h-[80vh] bg-card rounded-2xl overflow-hidden border border-border z-10 flex flex-col md:flex-row shadow-xl"
             >
               <button 
+                id="btn-close-profile-card"
+                aria-label="close_profile_card"
                 onClick={() => setIsOpen(false)} 
                 className="absolute top-4 right-4 z-20 flex h-8 w-8 items-center justify-center bg-background/50 hover:bg-accent rounded-full border border-border text-foreground transition-colors backdrop-blur-sm"
               >
@@ -96,7 +98,7 @@ export default function ExpandableProfileCard({
                         <p className="text-muted-foreground">Currently exploring the intersection of AI and user experience, building tools that empower creators and simplify daily workflows.</p>
                       </div>
                       
-                      <button className="mt-4 px-5 py-2.5 bg-primary text-primary-foreground font-medium rounded-lg hover:opacity-90 transition-opacity self-start shadow-sm">
+                      <button id="btn-connect-jane" aria-label="connect_with_jane" className="mt-4 px-5 py-2.5 bg-primary text-primary-foreground font-medium rounded-lg hover:opacity-90 transition-opacity self-start shadow-sm">
                         Connect with Jane
                       </button>
                     </div>

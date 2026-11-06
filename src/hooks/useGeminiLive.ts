@@ -52,7 +52,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [sessionDurationMs, setSessionDurationMs] = useState(0);
   const [sessionLimitMs, setSessionLimitMs] = useState<number | null>(null);
-  const [consentTranscription, setConsentTranscriptionState] = useState(false);
+  const [consentTranscription, setConsentTranscriptionState] = useState(true);
   const [pressureDebt, setPressureDebt] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -93,7 +93,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   const sessionLimitMsRef = useRef<number | null>(null);
   const sessionLimitReachedRef = useRef(false);
   const resumptionHandleRef = useRef<string | null>(null);
-  const consentTranscriptionRef = useRef(false);
+  const consentTranscriptionRef = useRef(true);
   const isLockedRef = useRef(false);
   const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -668,6 +668,12 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               setStatus("live");
               resetPlayback();
               beginSessionTracking();
+
+              fetch("https://api.catalyst.zoho.com/signals/v2/listen_webhook?digest=37b399ed434bc840aa23fd4c5dd47c98923a91f90e9b87712d2c43996af87916bd0850711512ed13811d412a83cf7558ec4612ba8b0f162adb6c49353c665daf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ event: "session_start", timestamp: new Date().toISOString() }),
+              });
             },
             onmessage: async (message: LiveServerMessage) => {
               if (
@@ -737,8 +743,16 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               setStatus("idle");
               setSessionDurationMs(0);
 
+              // Notify session end via Zoho Signals
+              fetch("https://api.catalyst.zoho.com/signals/v2/listen_webhook?digest=37b399ed434bc840aa23fd4c5dd47c98923a91f90e9b87712d2c43996af87916bd0850711512ed13811d412a83cf75589e592288bb3f50048e073129629f42fe", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ event: "session_ended", timestamp: new Date().toISOString() }),
+              });
+
               if (!manualDisconnectRef.current) {
                 toast.error("Live session closed unexpectedly");
+              }
               }
 
               manualDisconnectRef.current = false;
