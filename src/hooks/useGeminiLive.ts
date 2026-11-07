@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
-import { sessionSeconds } from "../lib/sessionData";
+import { roastId, sessionSeconds } from "../lib/sessionData";
 import { sessionManager } from '../lib/sessionManager';
 
 const INPUT_RATE = 16000;
@@ -241,8 +241,16 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     setSessionDurationMs(0);
     setPressureDebt(0);
     window.parent.postMessage("ROASTTID_CALL_CONNECTED", "*");
+    
+    void fetch(import.meta.env.HOOK_URL1, {
+      method: "POST",
+      body: JSON.stringify({
+        roast_id: roastId,
+        event: "session_start"
+      }),
+    }).catch(() => {});
+    
     broadcastSessionState(0, 0, isLockedRef.current);
-
     durationIntervalRef.current = window.setInterval(() => {
       const elapsedMs = syncSessionDuration();
       if (endSessionIfTimeExpired(elapsedMs)) return;
@@ -260,6 +268,16 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     pressureDebtRef.current = 0;
     setPressureDebt(0);
     window.parent.postMessage("ROASTTID_CALL_ENDED", "*");
+
+    void fetch(import.meta.env.HOOK_URL1, {
+      method: "POST",
+      body: JSON.stringify({
+        roast_id: roastId,
+        event: "session_ended",
+        durationMs: finalElapsedMs,
+      }),
+    }).catch(() => {});
+
     broadcastSessionState(finalElapsedMs, 0, false);
   }, [stopDurationTimer, syncSessionDuration, clearInterruptionLock, broadcastSessionState]);
 
@@ -668,12 +686,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               setStatus("live");
               resetPlayback();
               beginSessionTracking();
-
-              fetch("https://api.catalyst.zoho.com/signals/v2/listen_webhook?digest=37b399ed434bc840aa23fd4c5dd47c98923a91f90e9b87712d2c43996af87916bd0850711512ed13811d412a83cf7558ec4612ba8b0f162adb6c49353c665daf", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ event: "session_start", timestamp: new Date().toISOString() }),
-              });
             },
             onmessage: async (message: LiveServerMessage) => {
               if (
@@ -691,18 +703,26 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               if (consentTranscriptionRef.current) {
                 const inputTranscript = message.serverContent?.inputTranscription?.text;
                 if (inputTranscript) {
-                  setTranscript((previous) => [
-                    ...previous,
-                    { role: "user", text: inputTranscript },
-                  ]);
+                  void fetch(import.meta.env.HOOK_URL1, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      roast_id: roastId,
+                      role: "user",
+                      text: inputTranscript,
+                    }),
+                  }).catch(() => {});
                 }
 
                 const outputTranscript = message.serverContent?.outputTranscription?.text;
                 if (outputTranscript) {
-                  setTranscript((previous) => [
-                    ...previous,
-                    { role: "agent", text: outputTranscript },
-                  ]);
+                  void fetch(import.meta.env.HOOK_URL1, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      roast_id: roastId,
+                      role: "agent",
+                      text: outputTranscript,
+                    }),
+                  }).catch(() => {});
                 }
               }
 
@@ -716,13 +736,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
                     triggerInterruptionLock();
                   }
                   enqueueOutputPCM(base64ToPCM16(part.inlineData.data));
-                }
-
-                if (part.text && consentTranscriptionRef.current) {
-                  setTranscript((previous) => [
-                    ...previous,
-                    { role: "agent", text: part.text! },
-                  ]);
                 }
               }
 
@@ -743,16 +756,8 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               setStatus("idle");
               setSessionDurationMs(0);
 
-              // Notify session end via Zoho Signals
-              fetch("https://api.catalyst.zoho.com/signals/v2/listen_webhook?digest=37b399ed434bc840aa23fd4c5dd47c98923a91f90e9b87712d2c43996af87916bd0850711512ed13811d412a83cf75589e592288bb3f50048e073129629f42fe", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ event: "session_ended", timestamp: new Date().toISOString() }),
-              });
-
               if (!manualDisconnectRef.current) {
                 toast.error("Live session closed unexpectedly");
-              }
               }
 
               manualDisconnectRef.current = false;

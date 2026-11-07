@@ -24,6 +24,7 @@
     "@soundcn": "https://soundcn.xyz/r/{name}.json",
     "@unlumen-ui": "https://ui.unlumen.com/r/{name}.json",
     "@shadcn/ui": "https://ui.shadcn.com/r/{name}.json",
-    "@aicanvas": "https://aicanvas.me/r/{name}.json"
+    "@aicanvas": "https://aicanvas.me/r/{name}.json",
+    "@visant": "https://ui.visantlabs.com/r/{name}.json"
   }
 }
