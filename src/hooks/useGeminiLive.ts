@@ -3,7 +3,7 @@ import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
 import { roastId, sessionSeconds } from "../lib/sessionData";
 import { sessionManager } from '../lib/sessionManager';
-import { decisionJudge } from "../lib/decisionJudge";
+import { cloudflareJudge } from "../lib/cloudflareJudge";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -236,7 +236,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   }, []);
 
   const beginSessionTracking = useCallback(() => {
-    decisionJudge.resetSession();
+    cloudflareJudge.resetSession();
     connectedAtRef.current = Date.now();
     pressureDebtRef.current = 0;
     sessionLimitReachedRef.current = false;
@@ -688,12 +688,12 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               if (consentTranscriptionRef.current) {
                 const inputTranscript = message.serverContent?.inputTranscription?.text;
                 if (inputTranscript) {
-                  decisionJudge.onUserChunk(inputTranscript);
+                  cloudflareJudge.onUserChunk(inputTranscript);
                 }
 
                 const outputTranscript = message.serverContent?.outputTranscription?.text;
                 if (outputTranscript) {
-                  decisionJudge.onAgentChunk(outputTranscript);
+                  cloudflareJudge.onAgentChunk(outputTranscript);
                 }
               }
 
@@ -712,7 +712,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
               if (message.serverContent?.turnComplete) {
                 isAgentTurnActiveRef.current = false;
-                decisionJudge.onTurnComplete();
+                cloudflareJudge.onTurnComplete();
               }
             },
             onclose: () => {
