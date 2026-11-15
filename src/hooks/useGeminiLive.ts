@@ -3,6 +3,7 @@ import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
 import { toast } from "sonner";
 import { roastId, sessionSeconds } from "../lib/sessionData";
 import { sessionManager } from '../lib/sessionManager';
+import { decisionJudge } from "../lib/decisionJudge";
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
@@ -235,20 +236,13 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
   }, []);
 
   const beginSessionTracking = useCallback(() => {
+    decisionJudge.resetSession();
     connectedAtRef.current = Date.now();
     pressureDebtRef.current = 0;
     sessionLimitReachedRef.current = false;
     setSessionDurationMs(0);
     setPressureDebt(0);
     window.parent.postMessage("ROASTTID_CALL_CONNECTED", "*");
-    
-    void fetch(import.meta.env.HOOK_URL1, {
-      method: "POST",
-      body: JSON.stringify({
-        roast_id: roastId,
-        event: "session_start"
-      }),
-    }).catch(() => {});
     
     broadcastSessionState(0, 0, isLockedRef.current);
     durationIntervalRef.current = window.setInterval(() => {
@@ -268,15 +262,6 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
     pressureDebtRef.current = 0;
     setPressureDebt(0);
     window.parent.postMessage("ROASTTID_CALL_ENDED", "*");
-
-    void fetch(import.meta.env.HOOK_URL1, {
-      method: "POST",
-      body: JSON.stringify({
-        roast_id: roastId,
-        event: "session_ended",
-        durationMs: finalElapsedMs,
-      }),
-    }).catch(() => {});
 
     broadcastSessionState(finalElapsedMs, 0, false);
   }, [stopDurationTimer, syncSessionDuration, clearInterruptionLock, broadcastSessionState]);
@@ -703,26 +688,12 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
               if (consentTranscriptionRef.current) {
                 const inputTranscript = message.serverContent?.inputTranscription?.text;
                 if (inputTranscript) {
-                  void fetch(import.meta.env.HOOK_URL_AI, {
-                    method: "POST",
-                    body: JSON.stringify({
-                      roast_id: roastId,
-                      role: "user",
-                      text: inputTranscript,
-                    }),
-                  }).catch(() => {});
+                  decisionJudge.onUserChunk(inputTranscript);
                 }
 
                 const outputTranscript = message.serverContent?.outputTranscription?.text;
                 if (outputTranscript) {
-                  void fetch(import.meta.env.HOOK_URL1, {
-                    method: "POST",
-                    body: JSON.stringify({
-                      roast_id: roastId,
-                      role: "agent",
-                      text: outputTranscript,
-                    }),
-                  }).catch(() => {});
+                  decisionJudge.onAgentChunk(outputTranscript);
                 }
               }
 
@@ -741,6 +712,7 @@ export function useGeminiLive(systemMessageSettings: LiveSystemMessageSettings) 
 
               if (message.serverContent?.turnComplete) {
                 isAgentTurnActiveRef.current = false;
+                decisionJudge.onTurnComplete();
               }
             },
             onclose: () => {

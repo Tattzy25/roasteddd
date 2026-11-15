@@ -89,6 +89,9 @@ importers:
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
+      use-webmcp-tool:
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.3.0)
       vite:
         specifier: ^8.0.8
         version: 8.3.0(@types/node@25.9.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)
@@ -3274,6 +3277,11 @@ packages:
       '@types/react':
         optional: true
 
+  use-webmcp-tool@0.3.0:
+    resolution: {integrity: sha512-iwO5KbSdDzcV33PSCZw4baclCD3tEU4drdXAeeKfTCM/+F5t+LAug14UXbYKD3K3tWxBiYCuDuWXmm/q1ZSDjw==}
+    peerDependencies:
+      react: '>=18'
+
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -3337,6 +3345,9 @@ packages:
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
     engines: {node: '>= 8'}
+
+  webmcp-types@0.1.10:
+    resolution: {integrity: sha512-U4GQ1RpJ0tqCUt2ALMV9Pnhi+hsy8L31f/Q1v4mLVhW64r5sYhh+2+SjP/Lq4/9jP33vZgNkuRZARJl65A/ZIg==}
 
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
@@ -6624,6 +6635,11 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
+  use-webmcp-tool@0.3.0(react@19.3.0):
+    dependencies:
+      react: 19.3.0
+      webmcp-types: 0.1.10
+
   util-deprecate@1.0.2: {}
 
   validate-npm-package-name@7.0.2: {}
@@ -6655,6 +6671,8 @@ snapshots:
       tsx: 4.23.13
 
   web-streams-polyfill@3.3.3: {}
+
+  webmcp-types@0.1.10: {}
 
   which@2.0.2:
     dependencies:

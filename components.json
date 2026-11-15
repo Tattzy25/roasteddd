@@ -25,6 +25,7 @@
     "@unlumen-ui": "https://ui.unlumen.com/r/{name}.json",
     "@shadcn/ui": "https://ui.shadcn.com/r/{name}.json",
     "@aicanvas": "https://aicanvas.me/r/{name}.json",
-    "@visant": "https://ui.visantlabs.com/r/{name}.json"
+    "@visant": "https://ui.visantlabs.com/r/{name}.json",
+    "@microkit": "https://microkit.co/r/{name}.json"
   }
 }
