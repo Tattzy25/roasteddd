@@ -33,20 +33,13 @@ class CloudflareJudgeManager {
   }
 
   private async judge(speaker: "THE_HUMAN" | "THE_AI", transcript: string) {
-    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-    const authToken = process.env.CLOUDFLARE_AUTH_TOKEN;
-
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/cloudflare/clef-omni`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "clef-omni",
-          state: `${speaker} ${transcript}`,
+    const response = await fetch("/api/judge", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        state: `${speaker} ${transcript}`,
           questions: {
             team: {
               type: "choice",
