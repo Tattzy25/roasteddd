@@ -25,6 +25,11 @@ class CloudflareJudgeManager {
   }
 
   onTurnComplete() {
+    if (this.userBuffer.trim()) {
+      const completedUserText = this.userBuffer.trim();
+      this.userBuffer = "";
+      void this.judge("THE_HUMAN", completedUserText);
+    }
     if (this.agentBuffer.trim()) {
       const completedAgentText = this.agentBuffer.trim();
       this.agentBuffer = "";
