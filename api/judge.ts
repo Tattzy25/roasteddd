@@ -12,6 +12,7 @@ export default async function handler(req: any, res: any) {
       headers: {
         Authorization: `Bearer ${authToken}`,
         "Content-Type": "application/json",
+        "cf-aig-gateway-id": "default"
       },
       body: JSON.stringify({
         model: "clef-omni",
