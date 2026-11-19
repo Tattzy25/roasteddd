@@ -5,9 +5,10 @@ import { cn } from './lib/utils';
 import { PhoneCallIcon, type PhoneCallIconHandle } from './components/ui/phone-call';
 import { CameraPreview } from './components/video/CameraPreview';
 import { ConnectingOverlay } from './components/ui/ConnectingOverlay';
-import { WreckShader } from './components/WreckShader';
+import { WreckShader } from '../../ogWreckShader';
 import { useGeminiLive } from './hooks/useGeminiLive';
 import { SYSTEM_MESSAGE_SETTINGS } from './lib/SystemMessage';
+import { sessionData } from './lib/sessionData';
 import { selectedVoice } from './lib/voices';
 
 export default function App() {
@@ -57,9 +58,12 @@ export default function App() {
           className="flex-1 relative bg-black flex roast-gradient min-h-[100svh]"
         >
           {/* Orb — always behind everything */}
-          <div className="absolute inset-0 pointer-events-none z-0">
-            <WreckShader audioLevel={audioLevel} visualMode={visualMode} />
-          </div>
+        <div className="absolute inset-0 pointer-events-none z-0">
+        <WreckShader
+             audioLevel={audioLevel}
+             visualMode={visualMode}
+             personaId={sessionData.session_persona}/>
+        </div>
 
           <ConnectingOverlay show={status === "connecting"} />
 
